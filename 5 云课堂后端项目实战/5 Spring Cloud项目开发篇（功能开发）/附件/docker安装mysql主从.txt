@@ -1,0 +1,102 @@
+﻿使用allen老师的镜像制作自己的mysql主从
+---------
+docker pull xiaochunping/mysql-master;
+docker pull xiaochunping/mysql-slave;
+
+docker run \
+--name mysql-master \
+--privileged=true \
+-v /home/mysql/master-data:/var/lib/mysql \
+-p 3306:3306 \
+-e MYSQL_ROOT_PASSWORD=root \
+-d xiaochunping/mysql-master
+
+docker run \
+--name mysql-slave \
+--privileged=true \
+-v /home/mysql/slave-data:/var/lib/mysql \
+-p 3307:3306 --link mysql-master:master \
+-e MYSQL_ROOT_PASSWORD=root \
+-d xiaochunping/mysql-slave
+-----------------
+
+// 如果授权给*就不需要查看ip
+docker inspect --format='{{.NetworkSettings.IPAddress}}' mysql-master
+docker inspect --format='{{.NetworkSettings.IPAddress}}' mysql-slave
+
+docker exec -it mysql-master /bin/bash
+mysql -uroot -proot
+
+grant replication slave on *.* to 'test'@'%' identified by '123456';
+flush privileges;
+// 查看主的状态
+show master status;
+
+docker exec -it mysql-slave /bin/bash
+mysql -uroot -proot
+change master to master_host='master', master_user='test', master_password='123456', \
+master_port=3306, master_log_file='mysql-bin.000003', master_log_pos=589, master_connect_retry=30;
+
+start slave;
+// 查看从的状态
+show slave status\G
+
+--增加远程访问ip
+grant all privileges on *.* to root@"192.168.100.246" identified by 'root@123456' with grant option
+
+
+
+
+
+
+
+
+****************************
+* mysql 主从 重新同步
+****************************
+
+mysql 主从同步一担出了问题之后，就会导致从库上的数据和主库不一样了。所以需要生新同步数据。
+
+1、登录主库服务器，进入mysql，命令为：mysql -uroot -ppassword
+
+2、执行：FLUSH TABLES WITH READ LOCK;
+
+3、查看主库状态：show master status;
+
+4、再开一个主库服务器的SSH，这次不进入mysql，需要导出mysql的数据库：
+mysqldump -u root -ppassword --opt -R database > database20161109.sql
+并把生成的 database20161109.sql上传到从服务器的一个位置
+
+5、登录到从服务器，直接执行：mysql -uroot -p database < database20161109.sql
+
+6、回到主库并执行：UNLOCK TABLES;
+
+进入从服务器的mysql
+
+依次执行：
+
+slave stop;
+
+reset slave;
+
+change master to master_host='主机IP',master_user='master',master_password='master',master_log_file='mysql-bin.000011',master_log_pos=19282684;
+
+slave start;
+
+
+
+
+****************************
+* mysql 导出数据
+****************************
+
+mysql导出指定数据库
+mysqldump -uroot -proot --opt -R database > database20190704.sql
+
+mysql导出所有数据库
+mysqldump -uroot -proot --all-databases > database20190704.sql
+
+导入数据库：
+sourced:\database20190704.sql
+
+
